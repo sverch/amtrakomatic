@@ -3,8 +3,7 @@ Library to automate reading and getting to the purchase page for Amtrak tickets
 """
 
 import click
-import scrape_amtrak
-import format_output
+from amtrakomatic import scrape_amtrak
 
 @click.command()
 @click.option('--source', default=None, help='Source station.')
@@ -21,8 +20,7 @@ def amtrak_search(source, destination, date, csv, interactive, use_points):
     searches in a CSV.
     """
     if source and destination and date:
-        results = scrape_amtrak.get_all_fares(source, destination, date, use_points)
-        format_output.print_results(results)
+        scrape_amtrak.get_all_fares(source, destination, date, use_points).pretty_print()
     elif csv:
         scrape_amtrak.iterate_csv_trips(csv, interactive)
     else:

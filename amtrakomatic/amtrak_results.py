@@ -19,6 +19,54 @@ class AmtrakResult:
     result_id: str
     add_to_cart_button_name_attribute: str
 
+    def pretty_print(self):
+        """
+        Pretty prints this result to the terminal.
+        """
+        indent = "    "
+        first_departure = None
+        last_arrival = None
+        legs_string = ""
+        for leg in self.legs:
+            if not first_departure:
+                first_departure = "".join(leg["departure_time"].split(" "))
+            last_arrival = "".join(leg["arrival_time"].split(" "))
+            to_print = ""
+            to_print = to_print + "%s%-30s| " % (
+                indent,
+                leg["train_name"],
+                )
+            to_print = to_print + "%s -> " % (
+                "".join(leg["departure_time"].split(" ")),
+                )
+            to_print = to_print + "%s" % (
+                "".join(leg["arrival_time"].split(" "))
+                )
+            if leg["arrival_day"]:
+                to_print = to_print + ", %s" % (
+                    leg["arrival_day"],
+                    )
+                last_arrival = last_arrival + ", " + leg["arrival_day"]
+            to_print = to_print + " (%s)" % (
+                leg["duration"],
+                )
+            if leg["transfer"]:
+                to_print = to_print + "\n%s%sTRANSFER: %s (%s)" % (
+                    indent,
+                    indent,
+                    leg["transfer"]["station"],
+                    leg["transfer"]["duration"],
+                    )
+            legs_string = legs_string + to_print + "\n"
+        print("%s -> %s (%s): %s" % (
+            first_departure,
+            last_arrival,
+            self.total_travel_time,
+            ", ".join([fare.replace(".00", "") for fare in self.fares]),
+            ))
+        print(legs_string)
+
+
 @attr.s(auto_attribs=True)
 class AmtrakResults:
     """
@@ -130,6 +178,14 @@ class AmtrakResults:
         Get a specific result by train name.
         """
         return self.results
+
+    def pretty_print(self):
+        """
+        Pretty prints the results to the terminal.
+        """
+        for result in self.results:
+            result.pretty_print()
+        return True
 
     def get_all(self):
         """

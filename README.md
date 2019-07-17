@@ -6,14 +6,29 @@ You must set `AMTRAK_GUEST_REWARDS_USERNAME` and
 `AMTRAK_GUEST_REWARDS_PASSWORD`, and your profile must be fully filled out for
 some of the `--csv` mode stuff to work.
 
+Install dependencies:
+
 ```
-pipenv run pytest -vvvv amtrakomatic
-pipenv run python amtrakomatic/main.py --csv example.csv
-pipenv run python amtrakomatic/main.py --source galesburg --destination denver --date  09/15/2019
-pipenv run python amtrakomatic/main.py --source galesburg --destination denver --date  09/15/2019 --use-points
+pipenv install
 ```
 
-Example output (single search mode):
+Example commands (see [examples](examples) for more):
+
+```
+pipenv run amtrakomatic --csv example.csv
+pipenv run amtrakomatic --source galesburg --destination denver --date  09/15/2019
+pipenv run amtrakomatic --source galesburg --destination denver --date  09/15/2019 --use-points
+```
+
+Run local tests:
+
+```
+pipenv run tox
+```
+
+## Example Output
+
+### Single Search Mode
 
 ```
 pipenv run python amtrakomatic/main.py --source galesburg --destination denver --date 09/14/2019 --use-points
@@ -45,7 +60,7 @@ pipenv run python amtrakomatic/main.py --source galesburg --destination denver -
 
 ```
 
-Example output (CSV Mode):
+### CSV Mode
 
 ```
 $ pipenv run python amtrakomatic/main.py --csv example.csv

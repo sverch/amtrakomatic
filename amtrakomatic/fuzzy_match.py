@@ -31,12 +31,12 @@ def load_stations():
         station_map[station_info["name"]] = station_info
     return station_map
 
+AMTRAK_STATIONS = load_stations()
 
 def station(name):
     """
     Given a rough station name, does a fuzzy match on all Amtrak stations to return the proper
     station code.
     """
-    station_map = load_stations()
-    matched_station = process.extractOne(name, station_map.keys())[0]
-    return (matched_station, station_map[matched_station]["code"])
+    matched_station = process.extractOne(name, AMTRAK_STATIONS.keys())[0]
+    return (matched_station, AMTRAK_STATIONS[matched_station]["code"])

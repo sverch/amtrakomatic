@@ -6,7 +6,7 @@ import json
 import pathlib
 import unittest
 import attr
-import amtrak_results
+from amtrakomatic import amtrak_results
 
 TEST_DATA_DIR = os.path.join(pathlib.Path(__file__).parent, 'test_data')
 PAGE1 = os.path.join(TEST_DATA_DIR, 'boston_newyork_08_24_2019_False_1.html')
@@ -50,6 +50,19 @@ class TestAmtrakResults(unittest.TestCase):
         run_example(PAGE2, PAGE2_EXPECTED)
         run_example(PAGE3, PAGE3_EXPECTED)
         run_example(PAGE4, PAGE4_EXPECTED)
+
+    def test_pretty_print(self):
+        """
+        Tests that amtrak results pretty print can at least run.
+        """
+
+        def run_example(html_page):
+            results = amtrak_results.AmtrakResults.from_html(open(html_page))
+            self.assertTrue(results.pretty_print())
+        run_example(PAGE1)
+        run_example(PAGE2)
+        run_example(PAGE3)
+        run_example(PAGE4)
 
 if __name__ == '__main__':
     unittest.main()

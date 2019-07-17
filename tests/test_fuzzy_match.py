@@ -3,7 +3,7 @@ Test for fuzzy matcher library.
 """
 import unittest
 import collections
-import fuzzy_match
+from amtrakomatic import fuzzy_match
 
 class TestStationMatch(unittest.TestCase):
     """

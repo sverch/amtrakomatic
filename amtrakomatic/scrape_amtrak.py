@@ -8,9 +8,8 @@ import sys
 import logging
 from selenium import webdriver
 from bs4 import BeautifulSoup
-import fuzzy_match
-import amtrak_results
-import format_output
+from amtrakomatic import fuzzy_match
+from amtrakomatic import amtrak_results
 
 logging.basicConfig(level=logging.INFO)
 
@@ -108,8 +107,9 @@ def get_price(driver, use_points):
         return driver.find_element_by_id("total_points_redeemed")
     return driver.find_element_by_id("amtrakTotal")
 
-# pylint: disable=too-many-arguments
-def get_search_results(driver, source, destination, date, using_points, train_name_to_click=None):
+# pylint: disable=too-many-arguments,too-many-locals
+def get_search_results(driver, source, destination, date, using_points, train_name_to_click=None,
+                       dump_html_source=False):
     """
     Assuming we are on search results page, get all the prices.
     """
@@ -122,9 +122,10 @@ def get_search_results(driver, source, destination, date, using_points, train_na
         pagination_links = driver.find_elements_by_xpath("//a[contains(@class, 'pagination_page')]")
 
     def handle_page(page):
-        with open("%s_%s_%s_%s_%s.html" % (source, destination, date.replace("/", "_"),
-                                           using_points, page), "w+") as source_dump:
-            source_dump.write(driver.page_source)
+        if dump_html_source:
+            with open("%s_%s_%s_%s_%s.html" % (source, destination, date.replace("/", "_"),
+                                               using_points, page), "w+") as source_dump:
+                source_dump.write(driver.page_source)
         return amtrak_results.AmtrakResults.from_html(driver.page_source).results
 
     def check_for_ticket(name, results):
@@ -157,7 +158,7 @@ def get_search_results(driver, source, destination, date, using_points, train_na
         try_to_click_all(driver.find_elements_by_xpath(price_selector))
         try_to_click_all(driver.find_elements_by_xpath(add_to_cart_selector))
 
-    train_info = []
+    results = []
     # Make sure we get all pages
     for page in range(1, len(pagination_links) + 1):
         logging.debug("Finding page %s", page)
@@ -168,7 +169,7 @@ def get_search_results(driver, source, destination, date, using_points, train_na
             if ticket:
                 click_on_ticket(ticket)
                 return [ticket]
-        train_info.extend(current_page_results)
+        results.extend(current_page_results)
     if not pagination_links:
         current_page_results = handle_page(0)
         if train_name_to_click:
@@ -176,11 +177,11 @@ def get_search_results(driver, source, destination, date, using_points, train_na
             if ticket:
                 click_on_ticket(ticket)
                 return [ticket]
-        train_info.extend(current_page_results)
+        results.extend(current_page_results)
     if train_name_to_click:
         raise Exception("Attempted to click on a train but did not find it: %s" % (
             train_name_to_click))
-    return train_info
+    return amtrak_results.AmtrakResults(results)
 
 def get_all_fares(source, destination, date, use_points=False):
     """
@@ -250,11 +251,11 @@ def iterate_csv_trips(csv_trips_filename, interactive):
                                                      use_points)
                 print(search_info)
                 if use_points:
-                    format_output.print_results(ticket)
+                    ticket.pretty_print()
                     print("Price (points): %s" % price)
                     total_points = total_points + int(price.replace(",", ""))
                 else:
-                    format_output.print_results(ticket)
+                    ticket.pretty_print()
                     print("Price (dollars): %s" % price)
                     total_dollars = total_dollars + float(price.replace("$", "").replace(",", ""))
     print("Total point cost: %s" % total_points)
