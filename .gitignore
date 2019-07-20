@@ -1,0 +1,3 @@
+*.pyc
+geckodriver.log
+.tox
