@@ -168,7 +168,7 @@ def get_search_results(driver, source, destination, date, using_points, train_na
             ticket = check_for_ticket(train_name_to_click, current_page_results)
             if ticket:
                 click_on_ticket(ticket)
-                return [ticket]
+                return amtrak_results.AmtrakResults([ticket])
         results.extend(current_page_results)
     if not pagination_links:
         current_page_results = handle_page(0)
@@ -176,7 +176,7 @@ def get_search_results(driver, source, destination, date, using_points, train_na
             ticket = check_for_ticket(train_name_to_click, current_page_results)
             if ticket:
                 click_on_ticket(ticket)
-                return [ticket]
+                return amtrak_results.AmtrakResults([ticket])
         results.extend(current_page_results)
     if train_name_to_click:
         raise Exception("Attempted to click on a train but did not find it: %s" % (
@@ -235,9 +235,11 @@ def iterate_csv_trips(csv_trips_filename, interactive):
             if interactive:
                 print(search_info)
                 print("\n")
-                print(handle_specific_trip(driver, search_info[0], search_info[1],
-                                           search_info[2], search_info[3].rstrip(),
-                                           use_points))
+                ticket, price = handle_specific_trip(driver, search_info[0], search_info[1],
+                                                     search_info[2], search_info[3].rstrip(),
+                                                     use_points)
+                print(price)
+                ticket.pretty_print()
                 print("\n")
                 go_to_next = ""
                 while go_to_next not in ["c"]:
