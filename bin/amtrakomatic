@@ -1,0 +1,6 @@
+"""Runner Script for Amtrakomatic"""
+#!/usr/bin/env python
+
+# pylint:disable=import-self
+from amtrakomatic import cli
+cli.amtrak_search()

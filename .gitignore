@@ -1,3 +1,4 @@
 *.pyc
 geckodriver.log
 .tox
+*.egg-info
