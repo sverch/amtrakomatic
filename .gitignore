@@ -2,3 +2,4 @@
 geckodriver.log
 .tox
 *.egg-info
+*.html

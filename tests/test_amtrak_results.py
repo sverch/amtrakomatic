@@ -9,24 +9,6 @@ import attr
 from amtrakomatic import amtrak_results
 
 TEST_DATA_DIR = os.path.join(pathlib.Path(__file__).parent, 'test_data')
-PAGE1 = os.path.join(TEST_DATA_DIR, 'boston_newyork_08_24_2019_False_1.html')
-PAGE2 = os.path.join(TEST_DATA_DIR, 'boston_newyork_08_24_2019_False_2.html')
-PAGE3 = os.path.join(TEST_DATA_DIR, 'Boston_vermont_08_18_2019_False_0.html')
-PAGE4 = os.path.join(TEST_DATA_DIR, 'elpaso_houston_12_01_2019_False_0.html')
-PAGE5 = os.path.join(TEST_DATA_DIR, 'seattle_chicago_08_24_2019_False_0.html')
-
-
-PAGE1_EXPECTED = json.load(open(
-    os.path.join(TEST_DATA_DIR, 'boston_newyork_08_24_2019_False_1.json')))
-PAGE2_EXPECTED = json.load(open(
-    os.path.join(TEST_DATA_DIR, 'boston_newyork_08_24_2019_False_2.json')))
-PAGE3_EXPECTED = json.load(open(
-    os.path.join(TEST_DATA_DIR, 'Boston_vermont_08_18_2019_False_0.json')))
-PAGE4_EXPECTED = json.load(open(
-    os.path.join(TEST_DATA_DIR, 'elpaso_houston_12_01_2019_False_0.json')))
-PAGE5_EXPECTED = json.load(open(
-    os.path.join(TEST_DATA_DIR, 'seattle_chicago_08_24_2019_False_0.json')))
-
 
 class TestAmtrakResults(unittest.TestCase):
     """
@@ -40,29 +22,54 @@ class TestAmtrakResults(unittest.TestCase):
         Tests that amtrak results object can handle our pages.
         """
 
-        def run_example(html_page, expected_results):
-            results = amtrak_results.AmtrakResults.from_html(open(html_page))
-            dict_results = []
-            for result in results.results[1:]:
-                dict_results.append(attr.asdict(result))
-            self.assertEqual(dict_results, expected_results)
-        run_example(PAGE1, PAGE1_EXPECTED)
-        run_example(PAGE2, PAGE2_EXPECTED)
-        run_example(PAGE3, PAGE3_EXPECTED)
-        run_example(PAGE4, PAGE4_EXPECTED)
+        def run_example(name):
+            expected_result = json.load(open(os.path.join(TEST_DATA_DIR, '%s.json' % name)))
+            result_html = os.path.join(TEST_DATA_DIR, '%s_result.html' % name)
+            details_html = os.path.join(TEST_DATA_DIR, '%s_details.html' % name)
+            result = amtrak_results.AmtrakResult.from_result_and_details(open(result_html),
+                    open(details_html))
+            self.assertEqual(attr.asdict(result), expected_result)
+        run_example("galesburg_denver_06_21_2021_False_1_0")
+        run_example("newyork_kansascity_06_21_2021_False_0_0")
 
     def test_pretty_print(self):
         """
         Tests that amtrak results pretty print can at least run.
         """
 
-        def run_example(html_page):
-            results = amtrak_results.AmtrakResults.from_html(open(html_page))
-            self.assertTrue(results.pretty_print())
-        run_example(PAGE1)
-        run_example(PAGE2)
-        run_example(PAGE3)
-        run_example(PAGE4)
+        def run_example(name):
+            result_html = os.path.join(TEST_DATA_DIR, '%s_result.html' % name)
+            details_html = os.path.join(TEST_DATA_DIR, '%s_details.html' % name)
+            result = amtrak_results.AmtrakResult.from_result_and_details(open(result_html),
+                    open(details_html))
+            self.assertTrue(result.pretty_print())
+        run_example("galesburg_denver_06_21_2021_False_1_0")
+
+    def test_filter_by_train(self):
+        """
+        Tests that we can filter by a specific train.
+        """
+
+        def run_example(name, train_name, not_train_name):
+            expected_result = json.load(open(os.path.join(TEST_DATA_DIR, '%s.json' % name)))
+            result_html = os.path.join(TEST_DATA_DIR, '%s_result.html' % name)
+            details_html = os.path.join(TEST_DATA_DIR, '%s_details.html' % name)
+            result = amtrak_results.AmtrakResult.from_result_and_details(open(result_html),
+                    open(details_html))
+            results = amtrak_results.AmtrakResults([result])
+            result_by_train_name = results.get_by_train_name(train_name)
+            # Both my test examples only have one train
+            self.assertIsNotNone(result_by_train_name)
+            self.assertEqual(attr.asdict(result_by_train_name), expected_result)
+            self.assertIsNone(results.get_by_train_name(not_train_name))
+        run_example("galesburg_denver_06_21_2021_False_1_0",
+                "5 California Zephyr", "9001 Caliphony Zapper")
+        run_example("newyork_kansascity_06_21_2021_False_0_0",
+                "43 Pennsylvanian", "43 Crazy Pennsylvanian")
+        run_example("newyork_kansascity_06_21_2021_False_0_0",
+                "29 Capitol Limited", "29 Capitol Unlimited")
+        run_example("newyork_kansascity_06_21_2021_False_0_0",
+                "3 Southwest Chief", "3 Southwest Champ")
 
 if __name__ == '__main__':
     unittest.main()

@@ -40,3 +40,12 @@ def station(name):
     """
     matched_station = process.extractOne(name, AMTRAK_STATIONS.keys())[0]
     return (matched_station, AMTRAK_STATIONS[matched_station]["code"])
+
+def station_by_code(code):
+    """
+    Finds all station information by code.
+    """
+    for amtrak_station in AMTRAK_STATIONS.values():
+        if amtrak_station["code"] == code:
+            return amtrak_station
+    return {}

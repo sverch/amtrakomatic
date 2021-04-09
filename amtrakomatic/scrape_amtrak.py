@@ -6,12 +6,90 @@ import csv
 import os
 import sys
 import logging
+from collections import namedtuple
+from enum import Enum
+import time
 from selenium import webdriver
-from bs4 import BeautifulSoup
+import selenium
 from amtrakomatic import fuzzy_match
 from amtrakomatic import amtrak_results
 
 logging.basicConfig(level=logging.INFO)
+
+Selector = namedtuple('Selector', ['type', 'query'])
+class SelectorType(Enum):
+    """
+    Type of selector that this is, so we know which function to pass the query to.
+    """
+    ID = "find_element_by_id"
+    NAME = "find_element_by_name"
+    XPATH = "find_element_by_xpath"
+    XPATH_MULTIPLE = "find_elements_by_xpath"
+
+def class_selector(class_string):
+    """
+    https://stackoverflow.com/a/9133579
+    """
+    return '[contains(concat(" ", normalize-space(@class), " "), " %s ")]' % class_string
+
+def class_selectors(class_strings):
+    """
+    https://stackoverflow.com/a/9133579
+    """
+    return '[%s]' % ' and '.join(
+        ['contains(concat(" ", normalize-space(@class), " "), " %s ")' % class_string
+            for class_string in class_strings])
+
+selector_map = {
+    'Homepage.Sign_In': Selector(SelectorType.XPATH, "//button[contains(text(),'Sign In')]"),
+    'Homepage.From': Selector(SelectorType.XPATH, '//*[@id="mat-input-0"]'),
+    'Homepage.To': Selector(SelectorType.XPATH, '//*[@id="mat-input-1"]'),
+    # Note: I believe if you click on the return date field, it rerenders them both and this changes
+    # to "mat-input-3" because it becomes a "round trip" automatically.
+    'Homepage.Depart_Date': Selector(SelectorType.XPATH, '//*[@id="mat-input-2"]'),
+    'Homepage.Use_Points_Toggle': Selector(SelectorType.XPATH, '//*[@id="mat-checkbox-2-input"]'),
+    'Homepage.Search_Button': Selector(SelectorType.XPATH, '//*[@title="FIND TRAINS"]'),
+    'Login.Password': Selector(SelectorType.NAME, "_password"),
+    'Login.Name': Selector(SelectorType.NAME, "_name"),
+    'Login.Sign_In': Selector(SelectorType.NAME, "//button[contains(text(),'SIGN IN')]"),
+    'Date_Popup.Done': Selector(SelectorType.XPATH, "//button[contains(text(),'Done')]"),
+    'Results.Pages': Selector(SelectorType.XPATH_MULTIPLE,
+        "//li%s" % class_selector('pagination-page')),
+    'Results.NextPage': Selector(SelectorType.XPATH, "//li%s" % class_selector('pagination-next')),
+    'Results.LegContainer': Selector(SelectorType.XPATH_MULTIPLE,
+        "//div%s" % class_selector('search-results-leg')),
+    'Results.DetailsLink': Selector(SelectorType.XPATH_MULTIPLE,
+        "//span[contains(text(), 'Details')]"),
+    'Results.DetailsBody': Selector(SelectorType.XPATH,
+        "//div%s" % class_selector('details-modal-container')),
+    'Results.CloseDetails': Selector(SelectorType.XPATH,
+        "//button%s" % class_selectors(['close', 'pull-right'])),
+        }
+
+def find(driver, selector_name, exit_on_error=True):
+    """
+    Search for the given selector and log failure, where the name is more semantic in meaning than
+    the raw path needed to actually find it in the page.
+    """
+    selector = selector_map[selector_name]
+    logging.debug("Searching for %s using driver.%s(\"%s\")", selector_name, selector.type,
+            selector.query)
+    selector_fn = getattr(driver, selector.type.value)
+    try:
+        return selector_fn(selector.query)
+    except selenium.common.exceptions.NoSuchElementException as exception:
+        logging.error("Searching for %s using driver.%s(\"%s\") recieved exception: %s",
+                selector_name, selector.type, selector.query, exception)
+        if exit_on_error:
+            sys.exit(1)
+        else:
+            return None
+def click_when_obscured(driver, element):
+    """
+    I can't do the normal click in many cases because somehow something is obscuring it.
+    See https://stackoverflow.com/a/64499144 for workaround.
+    """
+    driver.execute_script("arguments[0].click();", element)
 
 def load_amtrak_site(driver):
     """
@@ -23,64 +101,51 @@ def login(driver):
     """
     Log in to the configured amtrak account.
     """
-    driver.find_element_by_xpath("//button[contains(text(),'Sign In')]").click()
-    driver.find_element_by_name("_password").clear()
-    driver.find_element_by_name("_password").send_keys(os.environ['AMTRAK_GUEST_REWARDS_PASSWORD'])
-    driver.find_element_by_name("_name").clear()
-    driver.find_element_by_name("_name").send_keys(os.environ['AMTRAK_GUEST_REWARDS_USERNAME'])
-    driver.find_element_by_xpath("//button[contains(text(),'SIGN IN')]").click()
+    find(driver, "Homepage.Sign_In").click()
+    find(driver, "Login.Password").clear()
+    find(driver, "Login.Password").send_keys(os.environ['AMTRAK_GUEST_REWARDS_PASSWORD'])
+    find(driver, "Login.Name").clear()
+    find(driver, "Login.Name").send_keys(os.environ['AMTRAK_GUEST_REWARDS_USERNAME'])
+    find(driver, "Login.Sign_In").click()
 
 def fill_search_parameters(driver, source, dest, date):
     """
     Perform a search with the given parematers.
     """
-
-    # I don't know why, but this selector is more reliable
-    # I get:
-    # selenium.common.exceptions.ElementNotInteractableException: Message: Element <input
-    # class="search-station-field__inp form-input-with-label__inp
-    # request-missing-points__ticket-form__input" name="wdf_origin" type="text"> could not be
-    # scrolled into view
-    def base_selector(name):
-        return "(.//*[normalize-space(text()) and normalize-space(.)='%s'])" % name
-
-    from_field = "%s[5]/following::input[2]" % base_selector("From")
-    to_field = "%s[5]/following::input[2]" % base_selector("To")
-    date_field = "%s[3]/following::input[1]" % base_selector("Depart")
-
-    driver.find_element_by_xpath(from_field).click()
-    driver.find_element_by_xpath(from_field).clear()
-    driver.find_element_by_xpath(from_field).send_keys(fuzzy_match.station(source)[1])
-    driver.find_element_by_xpath(to_field).click()
-    driver.find_element_by_xpath(to_field).clear()
-    driver.find_element_by_xpath(to_field).send_keys(fuzzy_match.station(dest)[1])
-    driver.find_element_by_xpath(date_field).click()
-    driver.find_element_by_xpath(date_field).clear()
-    driver.find_element_by_xpath(date_field).send_keys(date)
+    find(driver, "Homepage.From").click()
+    find(driver, "Homepage.From").clear()
+    find(driver, "Homepage.From").send_keys(fuzzy_match.station(source)[1])
+    find(driver, "Homepage.To").click()
+    find(driver, "Homepage.To").clear()
+    find(driver, "Homepage.To").send_keys(fuzzy_match.station(dest)[1])
+    find(driver, "Homepage.Depart_Date").click()
+    find(driver, "Homepage.Depart_Date").clear()
+    find(driver, "Homepage.Depart_Date").send_keys(date)
 
     # Click this so that the date selection dialog goes away and we can click find trains.
-    driver.find_element_by_xpath(from_field).click()
+    find(driver, "Date_Popup.Done").click()
 
 def select_points(driver):
     """
     Select search by points.
     """
-    driver.find_element_by_xpath(
-        "(.//*[contains(text(), 'Done')])[1]/following::span[5]").click()
-
+    toggle = find(driver, "Homepage.Use_Points_Toggle")
+    if not toggle.get_attribute("aria-checked"):
+        toggle.click()
 
 def select_dollars(driver):
     """
     Select search by dollars.
     """
-    driver.find_element_by_xpath(
-        "(.//*[contains(text(), 'Done')])[1]/following::span[4]").click()
+    toggle = find(driver, "Homepage.Use_Points_Toggle")
+    if toggle.get_attribute("aria_checked"):
+        toggle.click()
 
 def search(driver):
     """
     Click search button to start search.
     """
-    driver.find_element_by_id("findtrains").click()
+    find(driver, "Homepage.Search_Button").click()
 
 def skip_dog_page(driver):
     """
@@ -108,79 +173,51 @@ def get_price(driver, use_points):
     return driver.find_element_by_id("amtrakTotal")
 
 # pylint: disable=too-many-arguments,too-many-locals
-def get_search_results(driver, source, destination, date, using_points, train_name_to_click=None,
-                       dump_html_source=False):
+def get_search_results(driver, source, destination, date, using_points, dump_html_source=False):
     """
     Assuming we are on search results page, get all the prices.
     """
     logging.debug("Finding pagination links")
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    # Use beautiful soup to test if we have page links because it's much faster...
-    if not soup.find("a", "pagination_page"):
-        pagination_links = []
-    else:
-        pagination_links = driver.find_elements_by_xpath("//a[contains(@class, 'pagination_page')]")
+    # I think this needs to be here because of a brief animation that plays when the results page
+    # shows up.
+    time.sleep(1)
+    pagination_links = find(driver, "Results.Pages")
 
     def handle_page(page):
-        if dump_html_source:
-            with open("%s_%s_%s_%s_%s.html" % (source, destination, date.replace("/", "_"),
-                                               using_points, page), "w+") as source_dump:
-                source_dump.write(driver.page_source)
-        return amtrak_results.AmtrakResults.from_html(driver.page_source).results
-
-    def check_for_ticket(name, results):
-        ticket = None
-        for result in results:
-            for leg in result.legs:
-                if leg["train_name"] == name:
-                    ticket = result
-                    break
-        return ticket
-
-    def click_on_ticket(ticket):
-        add_to_cart_selector = "//input[@name=\"%s\"]" % ticket.add_to_cart_button_name_attribute
-        price_selector = "//input[@value='%s']" % ticket.minimum_fare_value_attribute
-
-        # There's a weird thing when searching for points where the result page looks like it's
-        # completely duplicated but one of them is hidden.  Maybe be a round trip thing?
-        def try_to_click_all(elements):
-            last_exception = None
-            for element in elements:
-                try:
-                    element.click()
-                    return
-                # pylint: disable=broad-except
-                except Exception as exception:
-                    last_exception = exception
-            if last_exception:
-                raise last_exception
-
-        try_to_click_all(driver.find_elements_by_xpath(price_selector))
-        try_to_click_all(driver.find_elements_by_xpath(add_to_cart_selector))
+        page_results = []
+        time.sleep(1)
+        legs = find(driver, "Results.LegContainer")
+        details_links = find(driver, "Results.DetailsLink")
+        time.sleep(1)
+        for index, (leg, details_link) in enumerate(zip(legs, details_links)):
+            time.sleep(0.5)
+            driver.execute_script("arguments[0].scrollIntoView();", details_link)
+            click_when_obscured(driver, details_link)
+            result_html = leg.get_attribute('innerHTML')
+            details_html = find(driver, "Results.DetailsBody").get_attribute('innerHTML')
+            # I have this here because it makes it easier to generate test cases
+            if dump_html_source:
+                with open("%s_%s_%s_%s_%s_%s_result.html" % (source, destination, date.replace("/",
+                    "_"), using_points, page, index), "w+") as source_dump:
+                    source_dump.write(result_html)
+                with open("%s_%s_%s_%s_%s_%s_details.html" % (source, destination, date.replace("/",
+                    "_"), using_points, page, index), "w+") as source_dump:
+                    source_dump.write(details_html)
+            time.sleep(0.5)
+            click_when_obscured(driver, find(driver, "Results.CloseDetails"))
+            page_results.append(amtrak_results.AmtrakResult.from_result_and_details(
+                result_html, details_html))
+        return page_results
 
     results = []
-    # Make sure we get all pages
-    for page in range(1, len(pagination_links) + 1):
-        logging.debug("Finding page %s", page)
-        driver.find_element_by_xpath("//a[text()='%s']" % page).click()
-        current_page_results = handle_page(page)
-        if train_name_to_click:
-            ticket = check_for_ticket(train_name_to_click, current_page_results)
-            if ticket:
-                click_on_ticket(ticket)
-                return amtrak_results.AmtrakResults([ticket])
-        results.extend(current_page_results)
-    if not pagination_links:
-        current_page_results = handle_page(0)
-        if train_name_to_click:
-            ticket = check_for_ticket(train_name_to_click, current_page_results)
-            if ticket:
-                click_on_ticket(ticket)
-                return amtrak_results.AmtrakResults([ticket])
-        results.extend(current_page_results)
-    if train_name_to_click:
-        raise Exception("Attempted to click on a train but did not find it: %s" % (
-            train_name_to_click))
+    for page, _ in enumerate(pagination_links):
+        results.extend(handle_page(page))
+        if (page + 1) < len(pagination_links):
+            # There's crap at the bottom of the page, so just scroll to the bottom every time to not
+            # have stuff obscured. See https://stackoverflow.com/a/27760083.
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            find(driver, "Results.NextPage").click()
+    #print(results)
     return amtrak_results.AmtrakResults(results)
 
 def get_all_fares(source, destination, date, use_points=False):
